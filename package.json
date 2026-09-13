@@ -8,7 +8,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "demo": "tsx scripts/bpe-demo.ts",
-    "build": "node scripts/build-browser.mjs"
+    "demo-model": "tsx scripts/train-demo.ts",
+    "build": "node scripts/build-page.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

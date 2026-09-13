@@ -3,65 +3,122 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SpaceAI — BPE Tokenizer Demo</title>
+  <title>SpaceAI — LLM от нуля в браузере</title>
   <style>
     :root { --bg:#0b0f14; --fg:#e8eef4; --muted:#6b7c8a; --acc:#00d4aa; --acc2:#0099ff; --card:#111820; --border:#23303d; }
     * { box-sizing:border-box; }
     body { margin:0; font-family:system-ui, sans-serif; background:var(--bg); color:var(--fg); line-height:1.5; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:2rem 1rem; }
-    .container { width:100%; max-width:860px; }
+    .container { width:100%; max-width:900px; }
     header { text-align:center; margin-bottom:2rem; }
     h1 { font-size:clamp(1.8rem,4vw,2.6rem); margin:0 0 0.5rem; background:linear-gradient(90deg,var(--acc),var(--acc2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
     .subtitle { color:var(--muted); font-size:1.05rem; }
+    h2 { font-size:1.2rem; margin:0 0 1rem; color:var(--fg); border-bottom:1px solid var(--border); padding-bottom:0.5rem; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
     label { display:block; font-size:0.9rem; color:var(--muted); margin-bottom:0.5rem; }
-    textarea, input[type=text], input[type=number] { width:100%; background:#0a0f14; border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:0.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.9rem; resize:vertical; }
-    textarea { min-height:100px; }
-    .row { display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem; align-items:center; }
+    textarea, input[type=text], input[type=number], select { width:100%; background:#0a0f14; border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:0.6rem 0.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.9rem; resize:vertical; }
+    textarea { min-height:80px; }
+    select { color-scheme:dark; }
+    input[type=number], select { width:auto; }
+    .row { display:flex; gap:0.75rem; flex-wrap:wrap; margin-top:1rem; align-items:center; }
+    .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.75rem; margin-top:1rem; }
     button { background:linear-gradient(90deg,var(--acc),var(--acc2)); border:none; color:#051014; font-weight:600; padding:0.7rem 1.2rem; border-radius:8px; cursor:pointer; font-size:0.95rem; transition:opacity .2s; }
     button:hover { opacity:0.9; }
     button:disabled { opacity:0.5; cursor:not-allowed; }
-    .output { background:#0a0f14; border:1px solid var(--border); border-radius:8px; padding:1rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto; }
-    .stats { display:flex; gap:1.5rem; flex-wrap:wrap; margin-top:0.75rem; font-size:0.85rem; color:var(--muted); }
+    button.ghost { background:transparent; color:var(--fg); border:1px solid var(--border); }
+    .output { background:#0a0f14; border:1px solid var(--border); border-radius:8px; padding:1rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow:auto; }
+    .stats { display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.75rem; font-size:0.85rem; color:var(--muted); }
     .stat { background:#0a0f14; border:1px solid var(--border); padding:0.4rem 0.8rem; border-radius:6px; }
     .stat strong { color:var(--fg); }
     footer { margin-top:2rem; text-align:center; color:var(--muted); font-size:0.8rem; }
     a { color:var(--acc2); text-decoration:none; }
     a:hover { text-decoration:underline; }
     .hidden { display:none; }
-    .progress { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:0.5rem; }
-    .progress-bar { height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); width:0%; transition:width 0.1s; }
+    .progress { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:0.75rem; }
+    .progress-bar { height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); width:0%; transition:width 0.15s; }
+    canvas { display:block; margin-top:0.75rem; border:1px solid var(--border); border-radius:8px; background:#0a0f14; }
+    .mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; color:var(--muted); white-space:pre; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>SpaceAI</h1>
-      <p class="subtitle">Byte-level BPE Tokenizer — чистый TypeScript/JS, работает в браузере</p>
+      <p class="subtitle">LLM от нуля — чистый TypeScript/JS, обучение прямо в браузере</p>
     </header>
 
     <section class="card">
-      <label>Обучение на корпусе</label>
-      <textarea id="corpus" placeholder="Вставьте текст для обучения токенизатора…"></textarea>
+      <h2>Токенизатор BPE</h2>
+      <label>Корпус для обучения токенизатора</label>
+      <textarea id="tok-corpus"></textarea>
       <div class="row">
-        <input type="number" id="vocabSize" value="2000" min="257" max="100000" style="width:140px;" placeholder="Vocab size">
-        <button id="trainBtn">Обучить</button>
-        <span id="trainStatus" style="color:var(--muted); font-size:0.85rem;"></span>
+        <label style="margin:0;">Vocab size</label>
+        <input type="number" id="tok-vocab" value="2000" min="257" max="100000">
+        <button id="tok-train">Обучить</button>
+        <span id="tok-status" style="color:var(--muted); font-size:0.85rem;"></span>
       </div>
-      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
-      <div class="stats" id="trainStats"></div>
+      <div class="progress"><div class="progress-bar" id="tok-progress"></div></div>
+      <div class="stats" id="tok-stats"></div>
+      <label style="margin-top:1.25rem;">Encode / Decode</label>
+      <textarea id="tok-text" placeholder="Текст для encode или JSON-массив id для decode…"></textarea>
+      <div class="row" style="margin-top:1rem;">
+        <button id="tok-encode">Encode</button>
+        <button id="tok-decode">Decode</button>
+      </div>
+      <div class="output" id="tok-output"></div>
     </section>
 
     <section class="card">
-      <label>Кодирование / декодирование</label>
-      <textarea id="inputText" placeholder="Текст для encode / JSON-массив для decode…"></textarea>
-      <div class="row" style="margin-top:1rem;">
-        <button id="encodeBtn" disabled>Encode</button>
-        <button id="decodeBtn" disabled>Decode</button>
-        <button id="saveBtn" class="hidden">Сохранить JSON</button>
-        <button id="loadBtn" class="hidden">Загрузить JSON</button>
-        <input type="file" id="loadFile" accept=".json" class="hidden">
+      <h2>GPT-модель (байтовый уровень)</h2>
+      <div class="grid2">
+        <div>
+          <label>Преcет размера</label>
+          <select id="m-preset">
+            <option value="fast">Быстрый (мин. для демо)</option>
+            <option value="tiny" selected>Компактный (~120k)</option>
+            <option value="small">Средний (~530k)</option>
+          </select>
+        </div>
+        <div>
+          <label>Шагов обучения</label>
+          <input type="number" id="m-steps" value="200" min="10" max="5000">
+        </div>
+        <div>
+          <label>Batch size</label>
+          <input type="number" id="m-batch" value="8" min="1" max="64">
+        </div>
       </div>
-      <div class="output" id="output"></div>
+      <label style="margin-top:1rem;">Корпус (текст для обучения)</label>
+      <textarea id="m-corpus"></textarea>
+      <div class="row">
+        <button id="m-train">Обучить модель</button>
+        <button id="m-stop" class="ghost" disabled>Стоп</button>
+        <span id="m-status" style="color:var(--muted); font-size:0.85rem;"></span>
+      </div>
+      <div class="progress"><div class="progress-bar" id="m-progress"></div></div>
+      <canvas id="m-chart" width="840" height="90"></canvas>
+      <div class="stats" id="m-stats"></div>
+
+      <label style="margin-top:1.25rem;">Генерация</label>
+      <div class="grid2">
+        <div style="grid-column:1/-1;">
+          <input type="text" id="m-prompt" placeholder="Промпт, например: The fox" style="min-width:0;">
+        </div>
+        <div>
+          <label>Temperature</label>
+          <input type="number" id="m-temp" value="0.7" min="0.1" max="2" step="0.1">
+        </div>
+        <div>
+          <label>Top-K</label>
+          <input type="number" id="m-topk" value="40" min="1" max="256">
+        </div>
+      </div>
+      <div class="row">
+        <button id="m-generate" disabled>Сгенерировать</button>
+        <label style="margin:0; display:inline-flex; align-items:center; gap:0.4rem;">
+          <input type="checkbox" id="m-stream" checked> поток текста
+        </label>
+      </div>
+      <div class="output" id="m-output" style="margin-top:0.75rem;"></div>
     </section>
 
     <footer>
@@ -69,296 +126,29 @@
     </footer>
   </div>
 
-  <script type="module">
-    // ============================================================
-    // BYTE-LEVEL BPE TOKENIZER (embedded, no build step)
-    // ============================================================
+  <script>
+"use strict";(()=>{var Se=Object.defineProperty;var Ce=(s,r,e)=>r in s?Se(s,r,{enumerable:!0,configurable:!0,writable:!0,value:e}):s[r]=e;var S=(s,r,e)=>Ce(s,typeof r!="symbol"?r+"":r,e);function G(s){return typeof s.normalize=="function"?s.normalize("NFC"):s}var Le=/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;function K(s){return s.match(Le)??[]}function N(s){return s.length===0?[]:Array.from(new TextEncoder().encode(s))}function ne(s){return s.length===0?"":new TextDecoder().decode(s)}var ke="\uFFFD";var $=256,U=1e6;function D(s,r){return s*U+r}function Ee(s){return[Math.floor(s/U),s%U]}function Ie(s,r,e,o){let n=[],a=[],i=[],l=0;for(;l<s.length;)l+1<s.length&&s[l]===r&&s[l+1]===e?(i.push(l),n.push(o),a.push(n.length-1),l+=2):(n.push(s[l]),l+=1);return{ids:n,mergePositions:a,occurrenceStarts:i}}function Re(s,r,e,o,n,a){let i=new Set;for(let l of o)l-1>=0&&i.add(l-1),l>=0&&l<r.length-1&&i.add(l),l+1<r.length-1&&i.add(l+1);for(let l of i)ze(s,D(r[l],r[l+1]));for(let l of n)l+1<e.length&&oe(s,D(e[l],e[l+1])),l-1>=0&&e[l-1]!==a&&oe(s,D(e[l-1],e[l]))}function oe(s,r){s.set(r,(s.get(r)??0)+1)}function ze(s,r){let e=(s.get(r)??0)-1;e<=0?s.delete(r):s.set(r,e)}function Be(s){let r=new Map;for(let e=0;e+1<s.length;e++)oe(r,D(s[e],s[e+1]));return r}function $e(s){let r=-1,e=0;for(let[o,n]of s)n>e&&(e=n,r=o);return r===-1?null:[r,e]}async function se(s,r){let{vocabularySize:e,onProgress:o,progressEvery:n=1,yieldEvery:a=0}=r,i=e-$;if(i<0)throw new Error(`vocabularySize must be >= ${$}`);let l=G(s),t=K(l),h=[];for(let P of t)for(let m of N(P))h.push(m);let y=h.length,T=new Map,A=[],v=h,k=Be(v),x=0;for(let P=0;P<i;P++){let m=$e(k);if(m===null||m[1]<2)break;let[c,f]=m,[u,w]=Ee(c);if(f<2)break;let b=$+P,{ids:F,mergePositions:z,occurrenceStarts:re}=Ie(v,u,w,b);Re(k,v,F,re,z,b),v=F,T.set(c,b),A.push([u,w]),o&&(x+=1,x>=n&&(x=0,o({mergeIndex:P,mergesMade:A.length,currentLength:v.length}))),a>0&&(P%a===0||P===i-1)&&await new Promise(Y=>setTimeout(Y,0))}return{merges:T,mergePairs:A,mergesMade:A.length,corpusTokens:y}}var ae=["<|endoftext|>"];function ie(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\<!--APP-->")}function J(s){if(s.length===0)throw new Error("special token must not be empty");if(/\s/.test(s))throw new Error(`special token must not contain whitespace: "${s}"`);if([...N(s)].length===0)throw new Error(`special token must be non-empty after encoding: "${s}"`)}var W=class s{constructor(r){S(this,"merges",new Map);S(this,"specialTokens");S(this,"specialRegex");S(this,"vocabularyBytes",[]);if(this.specialTokens=r,this.vocabularyBytes=le(0,[]),r.length===0)this.specialRegex=null;else{let e=[...r].sort((o,n)=>n.length-o.length);this.specialRegex=new RegExp(e.map(o=>ie(o)).join("|"),"g")}}static create(){return new s([])}static createWithSpecialTokens(r=ae){for(let e of r)J(e);return new s(r)}get vocabularySize(){return this.vocabularyBytes.length+this.specialTokens.length}get specialTokenCount(){return this.specialTokens.length}async train(r,e){let{vocabularySize:o,onProgress:n,yieldEvery:a}=e,i=this.specialTokens.length,l=o-$-i;if(l<0)throw new Error(`vocabularySize is too small: need at least ${$+i}`);let t=await se(r,{vocabularySize:$+l,onProgress:n,yieldEvery:a});this.merges=t.merges,this.vocabularyBytes=le(t.mergesMade,t.mergePairs)}get specialBase(){return $+this.merges.size}specialId(r){return this.specialBase+this.specialTokens.indexOf(r)}encodeOrdinary(r){let e=K(G(r)),o=[];for(let n of e){let a=N(n);if(a.length<2){o.push(...a);continue}o.push(...this.mergePiece(a))}return o}encode(r){let e=G(r);if(this.specialRegex===null)return this.encodeOrdinary(e);let o=[],n=0;this.specialRegex.lastIndex=0;let a;for(;(a=this.specialRegex.exec(e))!==null;){a.index>n&&o.push(...this.encodeOrdinary(e.slice(n,a.index)));let i=this.specialId(a[0]);i>=this.specialBase?o.push(i):o.push(...this.encodeOrdinary(a[0])),n=a.index+a[0].length}return n<e.length&&o.push(...this.encodeOrdinary(e.slice(n))),o}decode(r){let e=this.specialBase,o=new TextEncoder().encode(ke),n=[],a=0;for(let t of r){let h;if(t>=e){let y=t-e,T=this.specialTokens[y];h=T!==void 0?new TextEncoder().encode(T):o}else h=this.vocabularyBytes[t]??o;n.push(h),a+=h.length}let i=new Uint8Array(a),l=0;for(let t of n)i.set(t,l),l+=t.length;return ne(i)}toVocab(){let r=[];for(let[e,o]of this.merges)r.push([e,o]);return r.sort((e,o)=>e[1]-o[1]),{merges:r,specialTokens:[...this.specialTokens]}}static fromVocab(r){for(let i of r.specialTokens)J(i);let e=new Map,o=[];for(let[i,l]of r.merges)e.set(i,l),o.push([Math.floor(i/U),i%U]);let n=[...o].sort((i,l)=>e.get(D(i[0],i[1]))-e.get(D(l[0],l[1]))),a=new s(r.specialTokens);return a.merges=e,a.vocabularyBytes=le(e.size,n),a}mergePiece(r){let e=r.slice();for(;;){let o=-1,n=-1,a=Number.POSITIVE_INFINITY;for(let l=0;l+1<e.length;l++){let t=D(e[l],e[l+1]),h=this.merges.get(t);if(h!==void 0){let y=h-$;y<a&&(a=y,n=t,o=l)}}if(o===-1)break;let i=this.merges.get(n);e=[...e.slice(0,o),i,...e.slice(o+2)]}return e}};function le(s,r){let e=new Array(s);for(let o=0;o<$;o++)e[o]=Uint8Array.of(o);for(let o=0;o<s;o++){let[n,a]=r[o],i=e[n],l=e[a],t=new Uint8Array(i.length+l.length);t.set(i,0),t.set(l,i.length),e[$+o]=t}return e}function Fe(s){let r={mlpScale:4,dropout:0,normEps:1e-5};return{vocabSize:s.vocabSize??256,blockSize:s.blockSize??64,nLayer:s.nLayer??2,nHead:s.nHead??4,nEmb:s.nEmb??64,...r,...s}}function Pe(s={}){return{learningRate:.003,weightDecay:.001,beta1:.9,beta2:.99,eps:1e-8,gradClip:1,...s}}var me=Math.sqrt(2/Math.PI);function He(s){return .5*s*(1+Math.tanh(me*(s+.044715*s*s*s)))}function Oe(s){let r=me*(s+.044715*s*s*s),e=Math.tanh(r),o=me*(1+3*.044715*s*s);return .5*(1+e)+.5*s*(1-e*e)*o}function ce(s,r,e,o,n){let a=s.length,i=0;for(let t=0;t<a;t++)i+=s[t]*s[t];let l=1/Math.sqrt(i/a+e);for(let t=0;t<a;t++)n.x[t]=s[t],n.r[t]=l,o[t]=s[t]*l*r[t]}function he(s,r,e,o,n){let a=s.length,i=0;for(let t=0;t<a;t++){let h=o.x[t]*o.r[t],y=s[t]*r[t];i+=y*h}let l=i/a;for(let t=0;t<a;t++){let h=o.x[t]*o.r[t],y=s[t]*r[t];n[t]=(y-h*l)*o.r[t],e[t]+=s[t]*h}}var Q=class{constructor(r){S(this,"cfg");S(this,"v");S(this,"c");S(this,"nHead");S(this,"headDim");S(this,"mlpDim");S(this,"weights",new Map);S(this,"grads",new Map);S(this,"order",[]);let e=Fe(r);if(e.nEmb%e.nHead!==0)throw new Error("nEmb must be divisible by nHead");if(e.nLayer<1||e.blockSize<1||e.vocabSize<1)throw new Error("invalid dims");this.cfg=e,this.v=e.vocabSize,this.c=e.nEmb,this.nHead=e.nHead,this.headDim=e.nEmb/e.nHead,this.mlpDim=e.nEmb*(e.mlpScale??4),this.addParam("wte",e.vocabSize*e.nEmb),this.addParam("wpe",e.blockSize*e.nEmb);for(let o=0;o<e.nLayer;o++)this.addParam(`b${o}.anorm`,e.nEmb),this.addParam(`b${o}.wqkv`,e.nEmb*3*e.nEmb),this.addParam(`b${o}.wout`,e.nEmb*e.nEmb),this.addParam(`b${o}.mnorm`,e.nEmb),this.addParam(`b${o}.w1`,e.nEmb*this.mlpDim),this.addParam(`b${o}.w2`,this.mlpDim*e.nEmb);this.addParam("fnorm",e.nEmb),this.init()}addParam(r,e){this.weights.set(r,new Float64Array(e)),this.grads.set(r,new Float64Array(e)),this.order.push(r)}init(){for(let e of this.order){let o=this.weights.get(e),a=e.endsWith(".wout")||e.endsWith(".w2")?.02/Math.sqrt(2*this.cfg.nLayer):.02;for(let i=0;i<o.length;i++)o[i]=De()*a}for(let e of this.order)(e.endsWith(".anorm")||e.endsWith(".mnorm")||e==="fnorm")&&this.weights.get(e).fill(1);this.zeroGrads()}zeroGrads(){for(let r of this.order)this.grads.get(r).fill(0)}get paramCount(){let r=0;for(let e of this.order)r+=this.weights.get(e).length;return r}eps(){return this.cfg.normEps??1e-5}forward(r,e){let o=this.cfg.blockSize,n=e.length/o;if(!Number.isInteger(n)||r.length!==e.length||n===0)throw new Error("targets must be B*T tokens matching tokens length, B>0");let a=[],i=0;for(let l=0;l<n;l++){let t=this.forwardItem(r,e,l);a.push(t),i+=t.loss}return{loss:i/n,caches:a}}backward(r,e,o){let n=this.cfg.blockSize,a=e.length/n;for(let i=0;i<a;i++)this.backwardItem(r,e,i,o[i])}embedForward(r,e,o){let{c:n}=this,a=this.cfg.blockSize,i=this.weights.get("wte"),l=this.weights.get("wpe");for(let t=0;t<a;t++){let h=r[e*a+t],y=t*n;for(let T=0;T<n;T++)o.x[y+T]=i[h*n+T]+l[y+T]}}forwardItem(r,e,o){let{v:n,c:a,nHead:i,headDim:l}=this,t=this.cfg.blockSize,h={x:new Float64Array(a*t),loss:0,perLayer:[],ln:new Float64Array(a*t),fln:{x:new Float64Array(a*t),r:new Float64Array(a*t)},logits:new Float64Array(n*t)};this.embedForward(r,o,h);let y=h.x;for(let k=0;k<this.cfg.nLayer;k++){let x={xn1:new Float64Array(a*t),an:{x:new Float64Array(a*t),r:new Float64Array(a*t)},ar1:new Float64Array(a*t),qh:new Float64Array(i*t*l),kh:new Float64Array(i*t*l),vh:new Float64Array(i*t*l),probs:new Float64Array(i*t*t),aPre:new Float64Array(a*t),a:new Float64Array(a*t),xn2:new Float64Array(a*t),mn:{x:new Float64Array(a*t),r:new Float64Array(a*t)},pre:new Float64Array(this.mlpDim*t),hpost:new Float64Array(this.mlpDim*t),m:new Float64Array(a*t),out:new Float64Array(a*t)};this.forwardLayer(k,y,x),y=x.out,h.perLayer.push(x)}let T=this.weights.get("fnorm"),A=this.weights.get("wte"),v=0;for(let k=0;k<t;k++){let x=k*a;ce(y.subarray(x,x+a),T,this.eps(),h.ln.subarray(x,x+a),{x:h.fln.x.subarray(x,x+a),r:h.fln.r.subarray(x,x+a)});let P=-1/0;for(let u=0;u<n;u++){let w=0;for(let b=0;b<a;b++)w+=h.ln[x+b]*A[u*a+b];h.logits[k*n+u]=w,w>P&&(P=w)}let m=0;for(let u=0;u<n;u++)m+=Math.exp(h.logits[k*n+u]-P);let c=Math.log(m)+P,f=e[o*t+k];v+=c-h.logits[k*n+f]}return h.loss=v/t,h}forwardLayer(r,e,o){let{c:n,nHead:a,headDim:i,mlpDim:l}=this,t=this.cfg.blockSize,h=this.weights.get(`b${r}.anorm`),y=this.weights.get(`b${r}.wqkv`),T=this.weights.get(`b${r}.wout`),A=this.weights.get(`b${r}.mnorm`),v=this.weights.get(`b${r}.w1`),k=this.weights.get(`b${r}.w2`),x=this.eps(),P=1/Math.sqrt(i);for(let m=0;m<t;m++){let c=m*n;ce(e.subarray(c,c+n),h,x,o.xn1.subarray(c,c+n),{x:o.an.x.subarray(c,c+n),r:o.an.r.subarray(c,c+n)})}for(let m=0;m<t;m++)for(let c=0;c<3*n;c++){let f=0;for(let z=0;z<n;z++)f+=o.xn1[m*n+z]*y[c*n+z];let u=c<n?o.qh:c<2*n?o.kh:o.vh,w=c%n,b=Math.floor(w/i),F=w%i;u[b*(t*i)+m*i+F]=f}for(let m=0;m<a;m++){let c=m*(t*i),f=m*t*t;for(let u=0;u<t;u++)for(let w=0;w<=u;w++){let b=0;for(let F=0;F<i;F++)b+=o.qh[c+u*i+F]*o.kh[c+w*i+F];o.probs[f+u*t+w]=b*P}}for(let m=0;m<a;m++){let c=m*t*t;for(let f=0;f<t;f++){let u=-1/0;for(let b=0;b<=f;b++){let F=o.probs[c+f*t+b];F>u&&(u=F)}let w=0;for(let b=0;b<=f;b++){let F=Math.exp(o.probs[c+f*t+b]-u);o.probs[c+f*t+b]=F,w+=F}for(let b=0;b<=f;b++)o.probs[c+f*t+b]/=w}}for(let m=0;m<a;m++){let c=m*(t*i),f=m*i,u=m*t*t;for(let w=0;w<t;w++)for(let b=0;b<=w;b++){let F=o.probs[u+w*t+b];if(F!==0)for(let z=0;z<i;z++)o.aPre[w*n+f+z]+=F*o.vh[c+b*i+z]}}for(let m=0;m<t;m++)for(let c=0;c<n;c++){let f=0;for(let u=0;u<n;u++)f+=o.aPre[m*n+u]*T[c*n+u];o.a[m*n+c]=f,o.ar1[m*n+c]=e[m*n+c]+f}for(let m=0;m<t;m++){let c=m*n;ce(o.ar1.subarray(c,c+n),A,x,o.xn2.subarray(c,c+n),{x:o.mn.x.subarray(c,c+n),r:o.mn.r.subarray(c,c+n)})}for(let m=0;m<t;m++){for(let c=0;c<l;c++){let f=0;for(let u=0;u<n;u++)f+=o.xn2[m*n+u]*v[c*n+u];o.pre[m*l+c]=f,o.hpost[m*l+c]=He(f)}for(let c=0;c<n;c++){let f=0;for(let u=0;u<l;u++)f+=o.hpost[m*l+u]*k[c*l+u];o.m[m*n+c]=f,o.out[m*n+c]=o.ar1[m*n+c]+f}}}backwardItem(r,e,o,n){let{v:a,c:i}=this,l=this.cfg.blockSize,h=1/(e.length/l),y=this.weights.get("wte"),T=this.grads.get("wte"),A=this.grads.get("wpe"),v=this.weights.get("fnorm"),k=new Float64Array(a*l);for(let c=0;c<l;c++){let f=e[o*l+c],u=-1/0;for(let b=0;b<a;b++)n.logits[c*a+b]>u&&(u=n.logits[c*a+b]);let w=0;for(let b=0;b<a;b++)w+=Math.exp(n.logits[c*a+b]-u);for(let b=0;b<a;b++)k[c*a+b]=(Math.exp(n.logits[c*a+b]-u)/w-(b===f?1:0))/l*h}let x=new Float64Array(i*l);for(let c=0;c<l;c++)for(let f=0;f<a;f++){let u=k[c*a+f];if(u!==0)for(let w=0;w<i;w++)T[f*i+w]+=u*n.ln[c*i+w],x[c*i+w]+=u*y[f*i+w]}let P=this.grads.get("fnorm"),m=new Float64Array(i*l);for(let c=0;c<l;c++){let f=c*i,u=x.subarray(f,f+i),w={x:n.fln.x.subarray(f,f+i),r:n.fln.r.subarray(f,f+i)},b=new Float64Array(i);he(u,v,P,w,b);for(let F=0;F<i;F++)m[f+F]=b[F]}for(let c=this.cfg.nLayer-1;c>=0;c--)this.backwardLayer(c,m,n.perLayer[c]);for(let c=0;c<l;c++){let f=r[o*l+c],u=c*i;for(let w=0;w<i;w++)T[f*i+w]+=m[u+w],A[u+w]+=m[u+w]}}backwardLayer(r,e,o){let{c:n,nHead:a,headDim:i,mlpDim:l}=this,t=this.cfg.blockSize,h=this.weights.get(`b${r}.w1`),y=this.grads.get(`b${r}.w1`),T=this.weights.get(`b${r}.w2`),A=this.grads.get(`b${r}.w2`),v=this.weights.get(`b${r}.wqkv`),k=this.grads.get(`b${r}.wqkv`),x=this.weights.get(`b${r}.wout`),P=this.grads.get(`b${r}.wout`),m=this.weights.get(`b${r}.anorm`),c=this.grads.get(`b${r}.anorm`),f=this.weights.get(`b${r}.mnorm`),u=this.grads.get(`b${r}.mnorm`),w=1/Math.sqrt(i),b=new Float64Array(n*t),F=new Float64Array(n*t);for(let d=0;d<t;d++)for(let g=0;g<n;g++){let M=e[d*n+g];b[d*n+g]=M,F[d*n+g]=M}let z=new Float64Array(l*t);for(let d=0;d<t;d++)for(let g=0;g<n;g++){let M=b[d*n+g];for(let p=0;p<l;p++)A[g*l+p]+=o.hpost[d*l+p]*M,z[d*l+p]+=M*T[g*l+p]}let re=new Float64Array(l*t),Y=new Float64Array(n*t);for(let d=0;d<t;d++)for(let g=0;g<l;g++){let M=z[d*l+g]*Oe(o.pre[d*l+g]);re[d*l+g]=M;for(let p=0;p<n;p++)y[g*n+p]+=o.xn2[d*n+p]*M,Y[d*n+p]+=M*h[g*n+p]}let be=new Float64Array(n*t);for(let d=0;d<t;d++){let g=d*n,M={x:o.mn.x.subarray(g,g+n),r:o.mn.r.subarray(g,g+n)},p=new Float64Array(n);he(Y.subarray(g,g+n),f,u,M,p);for(let E=0;E<n;E++)be[g+E]=p[E]}for(let d=0;d<n*t;d++)F[d]+=be[d];let pe=new Float64Array(n*t),ye=new Float64Array(n*t);for(let d=0;d<t;d++)for(let g=0;g<n;g++){let M=F[d*n+g];for(let p=0;p<n;p++)P[g*n+p]+=o.aPre[d*n+p]*M,pe[d*n+p]+=M*x[g*n+p];ye[d*n+g]+=M}let we=new Float64Array(a*t*i),Ae=new Float64Array(a*t*i),ve=new Float64Array(a*t*i),V=new Float64Array(a*t*t);for(let d=0;d<a;d++){let g=d*(t*i),M=d*i;for(let p=0;p<t;p++)for(let E=0;E<=p;E++){let C=0;for(let R=0;R<i;R++){let O=pe[p*n+M+R];C+=O*o.vh[g+E*i+R],ve[g+E*i+R]+=O*o.probs[d*t*t+p*t+E]}V[d*t*t+p*t+E]=C}for(let p=0;p<t;p++){let E=0;for(let C=0;C<=p;C++)E+=o.probs[d*t*t+p*t+C]*V[d*t*t+p*t+C];for(let C=0;C<=p;C++)V[d*t*t+p*t+C]=o.probs[d*t*t+p*t+C]*(V[d*t*t+p*t+C]-E)}for(let p=0;p<t;p++)for(let E=0;E<=p;E++){let C=V[d*t*t+p*t+E];if(C!==0)for(let R=0;R<i;R++)we[g+p*i+R]+=C*o.kh[g+E*i+R]*w,Ae[g+E*i+R]+=C*o.qh[g+p*i+R]*w}}let xe=new Float64Array(n*t);for(let d=0;d<t;d++)for(let g=0;g<3*n;g++){let M=g<n?we:g<2*n?Ae:ve,p=g%n,E=Math.floor(p/i),C=p%i,R=M[E*(t*i)+d*i+C];for(let O=0;O<n;O++)k[g*n+O]+=o.xn1[d*n+O]*R,xe[d*n+O]+=R*v[g*n+O]}let Te=new Float64Array(n*t);for(let d=0;d<t;d++){let g=d*n,M={x:o.an.x.subarray(g,g+n),r:o.an.r.subarray(g,g+n)},p=new Float64Array(n);he(xe.subarray(g,g+n),m,c,M,p);for(let E=0;E<n;E++)Te[g+E]=ye[g+E]+p[E]}for(let d=0;d<n*t;d++)e[d]=Te[d]}},Z=class{constructor(r){S(this,"model",r);S(this,"m",new Map);S(this,"v",new Map);S(this,"step",0);for(let e of r.order)this.m.set(e,new Float64Array(r.weights.get(e).length)),this.v.set(e,new Float64Array(r.weights.get(e).length))}reset(){for(let r of this.model.order)this.m.get(r).fill(0),this.v.get(r).fill(0)}stepOnce(r){let e=this.model,o=r.learningRate,n=0;for(let t of e.order){let h=e.grads.get(t);for(let y=0;y<h.length;y++)n+=h[y]*h[y]}n=Math.sqrt(n);let a=r.gradClip>0&&n>r.gradClip?r.gradClip/n:1;this.step+=1;let i=1-Math.pow(r.beta1,this.step),l=1-Math.pow(r.beta2,this.step);for(let t of e.order){let h=e.weights.get(t),y=e.grads.get(t),T=this.m.get(t),A=this.v.get(t);for(let v=0;v<h.length;v++){let k=y[v]*a;T[v]=r.beta1*T[v]+(1-r.beta1)*k,A[v]=r.beta2*A[v]+(1-r.beta2)*k*k;let x=T[v]/i,P=A[v]/l;h[v]-=o*(x/(Math.sqrt(P)+r.eps)+r.weightDecay*h[v])}}return n}};function De(){let s=0,r=0;for(;s===0;)s=Math.random();for(;r===0;)r=Math.random();return Math.sqrt(-2*Math.log(s))*Math.cos(2*Math.PI*r)}function Ne(s){let r=new TextEncoder().encode(s),e=new Int32Array(r.length);for(let o=0;o<r.length;o++)e[o]=r[o];return e}function ee(s=1337){let r=s>>>0;return()=>{r|=0,r=r+1831565813|0;let e=Math.imul(r^r>>>15,1|r);return e=e+Math.imul(e^e>>>7,61|e)^e,((e^e>>>14)>>>0)/4294967296}}var X=class{constructor(r){S(this,"bytes");this.bytes=Ne(r)}nextBatch(r,e,o){let n=this.bytes.length,a=new Int32Array(r*e),i=new Int32Array(r*e);for(let l=0;l<r;l++){let t=Math.floor(o()*n);for(let h=0;h<e;h++){let y=(t+h)%n;a[l*e+h]=this.bytes[y],i[l*e+h]=this.bytes[(y+1)%n]}}return{x:a,y:i}}};async function Me(s,r,e,o){let n=e.batchSize??4,a=e.steps??200,i=e.reportEvery??10,l=e.yieldEvery??10,t=Pe(e.training),h=s.cfg.blockSize,y=new X(r);if(y.bytes.length<h+2)throw new Error("corpus is too short to train on");let T=ee(e.seed??42),A=new Z(s);A.reset();let v=[],k=Math.min(10,Math.floor(a*.1));for(let x=0;x<a&&!e.signal?.aborted;x++){let{x:P,y:m}=y.nextBatch(n,h,T);s.zeroGrads();let{loss:c,caches:f}=s.forward(P,m);s.backward(P,m,f);let u=Ue(x,a,k,t.learningRate),w=A.stepOnce({...t,learningRate:u});v.push(c),(x%i===0||x===a-1)&&o({step:x+1,total:a,loss:c,gradNorm:w,learningRate:u}),l>0&&(x%l===0||x===a-1)&&await new Promise(b=>setTimeout(b,0))}return v}function Ue(s,r,e,o){if(s<e)return o*((s+1)/e);let n=(s-e)/Math.max(1,r-e);return o*.5*(1+Math.cos(Math.PI*n))}function qe(s,r,e,o){let n=s.length,a=new Float64Array(n);if(r>0&&r!==1)for(let A=0;A<n;A++)a[A]=s[A]/r;else a=s;let i=Array.from({length:n},(A,v)=>v);i.sort((A,v)=>a[v]-a[A]);let l=Math.max(1,Math.floor(e)),t=i.slice(0,Math.min(l,n)),h=-1/0;for(let A of t)a[A]>h&&(h=a[A]);let y=0;for(let A of t)a[A]=Math.exp(a[A]-h);for(let A of t)y+=a[A];let T=o()*y;for(let A of t)if(T-=a[A],T<=0)return A;return t[t.length-1]}function ue(s,r,e={}){let o=e.temperature??1,n=e.topK??50,a=256,i=ee(e.seed??7),l=s.cfg.blockSize,t=Array.from(r).slice(-l),h=[...t],y=new Int32Array(l);for(let A=0;A<a;A++){let v=new Int32Array(l),k=Math.max(0,h.length-l);for(let f=0;f<l;f++){let u=k+f;v[f]=u<h.length?h[u]:0}let{caches:x}=s.forward(v,y),m=x[0].logits.slice((l-1)*s.v,l*s.v),c=qe(m,o,n,i);h.push(c)}let T=h.slice(t.length);return{ids:T,text:new TextDecoder().decode(new Uint8Array(T))}}var de=`
+The Fox and the Crow. A crow was sitting on a branch of a tree with a piece of cheese in her beak. A fox saw her and wanted the cheese. He said, Oh crow, how lovely you are! Your feathers shine like silver. If only your voice is as sweet as your feathers, you would be the queen of the birds. The crow was so pleased that she opened her beak to sing, and the cheese fell to the ground. The fox grabbed it and ran away.
 
-    const BASE_VOCAB = 256;
-    const PAIR_MULT = 1_000_000;
-    const REPLACEMENT_CHAR = "\uFFFD";
+The Tortoise and the Hare. A hare made fun of the tortoise for being so slow. The tortoise smiled and said, One day I will beat you in a race. The hare laughed, but he agreed. The race began, and the hare ran far ahead. He was so sure of winning that he took a nap under a tree. The tortoise kept walking, slow and steady, and never stopped. When the hare woke up, the tortoise was already at the finish line. Slow and steady wins the race.
 
-    const PRETOKEN_PATTERN =
-      /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
+The Village and the Star. In a quiet village there lived a wise old man who loved to watch the stars. He kept a small telescope under his bed. Every night he climbed the hill and wrote down what he saw. One night the sky was full of clouds, and the stars were hidden. The old man sat and waited. He knew that beyond the clouds the stars still shone, and that nothing can hide light forever.
 
-    function normalizeText(s) { return s.normalize("NFC"); }
-    function pretokenize(s) { return s.match(PRETOKEN_PATTERN) ?? []; }
-    function encodeBytes(s) { return Array.from(new TextEncoder().encode(s)); }
-    function decodeBytes(arr) { return new TextDecoder().decode(new Uint8Array(arr)); }
-    function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-    function pairKey(a, b) { return a * PAIR_MULT + b; }
-    function unpackPair(k) { return [Math.floor(k / PAIR_MULT), k % PAIR_MULT]; }
-    function inc(map, k) { map.set(k, (map.get(k) ?? 0) + 1); }
-    function dec(map, k) { const v = (map.get(k) ?? 0) - 1; if (v <= 0) map.delete(k); else map.set(k, v); }
-    function countPairs(ids) { const m = new Map(); for (let i = 0; i + 1 < ids.length; i++) inc(m, pairKey(ids[i], ids[i + 1])); return m; }
-    function mostFrequent(stats) { let best = -1, bestC = 0; for (const [k, c] of stats) if (c > bestC) { bestC = c; best = k; } return best === -1 ? null : [best, bestC]; }
+The Little Robot. In a small workshop, a boy built a tiny robot from spare parts. The robot learned to say one word: hello. Every day the boy taught the robot a new word. Slowly the robot learned to say many things. It could say, I like the stars, and, Please give me more batteries. The boy smiled. He understood that learning takes patience, and that every word is a small step of a much longer journey.
 
-    function mergeWithPositions(ids, a, b, newId) {
-      const next = [], positions = [], starts = [];
-      let i = 0;
-      while (i < ids.length) {
-        if (i + 1 < ids.length && ids[i] === a && ids[i + 1] === b) {
-          starts.push(i);
-          next.push(newId);
-          positions.push(next.length - 1);
-          i += 2;
-        } else { next.push(ids[i]); i++; }
-      }
-      return { ids: next, mergePositions: positions, occurrenceStarts: starts };
-    }
+The Kind Gardener. A gardener planted seeds in the spring and watered them every morning. Some seeds grew fast, and some grew slow. The gardener never gave up on the slow ones. In summer the garden was full of flowers, and everyone stopped to look. The gardener said, We must be patient with all things, for everything grows in its own time.
 
-    function updateStats(stats, oldIds, newIds, occurrenceStarts, mergePositions, newId) {
-      const affected = new Set();
-      for (const i of occurrenceStarts) {
-        if (i - 1 >= 0) affected.add(i - 1);
-        if (i < oldIds.length - 1) affected.add(i);
-        if (i + 1 < oldIds.length - 1) affected.add(i + 1);
-      }
-      for (const p of affected) dec(stats, pairKey(oldIds[p], oldIds[p + 1]));
-      for (const j of mergePositions) {
-        if (j + 1 < newIds.length) inc(stats, pairKey(newIds[j], newIds[j + 1]));
-        if (j - 1 >= 0 && newIds[j - 1] !== newId) inc(stats, pairKey(newIds[j - 1], newIds[j]));
-      }
-    }
+The Sea and the Shell. On the shore a child found a shell with a tiny spiral inside. She held it to her ear and heard the sound of the sea. She asked her mother, How can such a small shell hold the whole ocean? Her mother answered, It cannot hold the ocean, my dear. It only remembers a whisper of the waves. And our minds are like that shell: they hold the whispers of everything we have seen.
 
-    async function trainBPE(corpus, { vocabularySize, onProgress, yieldEvery = 0 }) {
-      const maxMerges = vocabularySize - BASE_VOCAB;
-      if (maxMerges < 0) throw new Error(`vocabSize must be >= ${BASE_VOCAB}`);
-      const norm = normalizeText(corpus);
-      const pieces = pretokenize(norm);
-      const ids = [];
-      for (const p of pieces) for (const by of encodeBytes(p)) ids.push(by);
-      const stats = countPairs(ids);
-      const merges = new Map();
-      const mergePairs = [];
-      let current = ids;
-      let forward = 0;
-      for (let mi = 0; mi < maxMerges; mi++) {
-        const best = mostFrequent(stats);
-        if (!best || best[1] < 2) break;
-        const [bp, cnt] = best;
-        const [a, b] = unpackPair(bp);
-        const newId = BASE_VOCAB + mi;
-        const { ids: next, mergePositions, occurrenceStarts } = mergeWithPositions(current, a, b, newId);
-        updateStats(stats, current, next, occurrenceStarts, mergePositions, newId);
-        current = next;
-        merges.set(bp, newId);
-        mergePairs.push([a, b]);
-        if (onProgress) {
-          forward++;
-          if (forward >= 1) { forward = 0; onProgress({ mergeIndex: mi, mergesMade: mergePairs.length, currentLength: current.length }); }
-        }
-        if (yieldEvery > 0 && (mi % yieldEvery === 0 || mi === maxMerges - 1)) {
-          await new Promise(r => setTimeout(r, 0));
-        }
-      }
-      return { merges, mergePairs, mergesMade: mergePairs.length, corpusTokens: ids.length };
-    }
+The Helpful Ant. An ant carried a grain of sugar across the garden. The way was long, but the ant did not complain. On the way a beetle asked, Why do you carry such a heavy load? The ant replied, Because I want to be ready when winter comes. Every small effort today is a treasure tomorrow.
 
-    function buildVocabulary(mergesMade, mergePairs) {
-      const vocab = new Array(BASE_VOCAB + mergesMade);
-      for (let i = 0; i < BASE_VOCAB; i++) vocab[i] = new Uint8Array([i]);
-      for (let i = 0; i < mergesMade; i++) {
-        const [a, b] = mergePairs[i];
-        const L = vocab[a], R = vocab[b];
-        const m = new Uint8Array(L.length + R.length);
-        m.set(L, 0); m.set(R, L.length);
-        vocab[BASE_VOCAB + i] = m;
-      }
-      return vocab;
-    }
+The two friends lost their way in the forest and the sun was going down. The first friend said, We should climb the tallest tree so the birds can show us the way home. The second friend said, No, we should follow the river, because water always finds the way. They walked together along the river, and soon they saw the lights of their village in the distance.
 
-    class BPETokenizer {
-      constructor(specialTokens = []) {
-        this.merges = new Map();
-        this.specialTokens = specialTokens;
-        this.specialRegex = specialTokens.length === 0 ? null : new RegExp(
-          [...specialTokens].sort((x,y)=>y.length-x.length).map(escapeRegExp).join("|"), "g"
-        );
-        this.vocabBytes = buildVocabulary(0, []);
-      }
+Every morning the baker wakes before the sun. He mixes flour, water, and salt, and lights the fire in the old oven. The warm smell of fresh bread fills the street, and the children knock on the door with coins in their hands. The baker always gives them the smallest loaf with the crispest crust, free of charge.
 
-      get vocabularySize() { return this.vocabBytes.length + this.specialTokens.length; }
-      get specialTokenCount() { return this.specialTokens.length; }
-      get specialBase() { return BASE_VOCAB + this.merges.size; }
-      specialId(tok) { return this.specialBase + this.specialTokens.indexOf(tok); }
+The rain came down on the tin roof like a thousand tiny drums. Inside, the cat stretched on the windowsill and watched the drops race down the glass. The kettle began to sing, and grandmother poured tea into two blue cups. Outside the world was a blur of grey, but inside everything was warm and gold.
+`.trim();function L(s){let r=document.getElementById(s);if(!r)throw new Error("no element #"+s);return r}function B(s){return L(s)}var I=(s,r)=>{L(s).textContent=r},_=(s,r)=>{L(s).style.width=r+"%"},q=W.createWithSpecialTokens(["<|endoftext|>"]);B("tok-corpus").value=de;function te(){I("tok-stats",[`<span class="stat"><strong>Vocab:</strong> ${q.vocabularySize}</span>`,`<span class="stat"><strong>Merges:</strong> ${Math.max(0,q.vocabularySize-256-q.specialTokenCount)}</span>`,`<span class="stat"><strong>Special:</strong> ${q.specialTokenCount}</span>`].join(""))}L("tok-train").addEventListener("click",async()=>{let s=B("tok-corpus").value,r=parseInt(B("tok-vocab").value,10);if(!s.trim()){I("tok-status","\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043A\u043E\u0440\u043F\u0443\u0441");return}I("tok-status","\u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435\u2026"),L("tok-train").disabled=!0,_("tok-progress",0);let e=performance.now();try{await q.train(s,{vocabularySize:r,onProgress:o=>{_("tok-progress",Math.min(100,o.mergesMade/Math.max(1,r-256)*100)),I("tok-status",`\u0421\u043B\u0438\u044F\u043D\u0438\u0439 ${o.mergesMade}\u2026`)},yieldEvery:40}),I("tok-status",`\u0413\u043E\u0442\u043E\u0432\u043E \u0437\u0430 ${((performance.now()-e)/1e3).toFixed(1)}\u0441`),_("tok-progress",100),te()}catch(o){I("tok-status","\u041E\u0448\u0438\u0431\u043A\u0430: "+o.message)}L("tok-train").disabled=!1});L("tok-encode").addEventListener("click",()=>{let s=q.encode(B("tok-text").value);I("tok-output",JSON.stringify(Array.from(s))),te()});L("tok-decode").addEventListener("click",()=>{let s=B("tok-text").value.trim(),r;try{r=JSON.parse(s)}catch{I("tok-output","\u041E\u0448\u0438\u0431\u043A\u0430: \u043D\u0443\u0436\u0435\u043D JSON-\u043C\u0430\u0441\u0441\u0438\u0432 \u0447\u0438\u0441\u0435\u043B (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 [72,105,33])");return}I("tok-output",q.decode(r)),te()});B("m-corpus").value=de;var Ge={fast:{vocabSize:256,blockSize:32,nLayer:1,nHead:2,nEmb:32},tiny:{vocabSize:256,blockSize:64,nLayer:2,nHead:4,nEmb:64},small:{vocabSize:256,blockSize:64,nLayer:3,nHead:4,nEmb:128}},H=null,j=null,fe=!1;function _e(){return{...Ge[B("m-preset").value]}}function Ve(){return new Q(_e())}function ge(){if(!H){I("m-stats","");return}I("m-stats",[`<span class="stat"><strong>Params:</strong> ${H.paramCount.toLocaleString()}</span>`,`<span class="stat"><strong>Layers:</strong> ${H.cfg.nLayer}</span>`,`<span class="stat"><strong>Emb:</strong> ${H.cfg.nEmb}</span>`,`<span class="stat"><strong>Heads:</strong> ${H.cfg.nHead}</span>`,`<span class="stat"><strong>Block:</strong> ${H.cfg.blockSize}</span>`].join(""))}function Ke(s,r){if(s.length<=r)return[...s];let e=[];for(let o=0;o<r;o++)e.push(s[Math.floor(o/r*s.length)]);return e}function We(s){let r=L("m-chart"),e=r.getContext("2d"),o=r.width,n=r.height;if(e.clearRect(0,0,o,n),s.length<2){e.fillStyle="#6b7c8a",e.font="13px ui-monospace, monospace",e.fillText("loss \u0435\u0449\u0451 \u043D\u0435\u0442 \u2014 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u043E\u0431\u0443\u0447\u0435\u043D\u0438\u0435",12,n/2+5);return}let a=Ke(s,200),i=Math.min(...a,0),l=Math.max(...a),t=Math.max(1e-9,l-i)*1.15,h=l-t;e.strokeStyle="#00d4aa",e.lineWidth=1.5,e.beginPath(),a.forEach((y,T)=>{let A=6+T/(a.length-1)*(o-12),v=n-8-(y-h)/t*(n-20);T===0?e.moveTo(A,v):e.lineTo(A,v)}),e.stroke(),e.fillStyle="#6b7c8a",e.font="12px ui-monospace, monospace",e.fillText(`loss ${a[0].toFixed(2)} \u2192 ${a[a.length-1].toFixed(2)}`,12,14)}L("m-train").addEventListener("click",async()=>{let s=L("m-train"),r=L("m-stop");H=Ve(),fe=!1,ge(),s.disabled=!0,r.disabled=!1,L("m-generate").disabled=!0;let e=[];j=new AbortController;let o=B("m-corpus").value,n=parseInt(B("m-steps").value,10),a=parseInt(B("m-batch").value,10);_("m-progress",0),I("m-status",`\u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435: ${H.paramCount.toLocaleString()} \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432, ${n} \u0448\u0430\u0433\u043E\u0432\u2026`);let i=performance.now();try{await Me(H,o,{corpus:o,batchSize:a,steps:n,yieldEvery:1,signal:j.signal,training:{learningRate:.001}},l=>{e.push(l.loss),We(e),_("m-progress",l.step/l.total*100),I("m-status",`\u0428\u0430\u0433 ${l.step}/${l.total}  loss=${l.loss.toFixed(3)}  (${((performance.now()-i)/1e3).toFixed(1)}\u0441)`)}),fe=!0,ge(),L("m-generate").disabled=!1,j.signal.aborted?I("m-status",`\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043E \u043F\u043E\u0441\u043B\u0435 ${e.length} \u0448\u0430\u0433\u043E\u0432. loss=${e[e.length-1].toFixed(3)}`):(I("m-status",`\u0413\u043E\u0442\u043E\u0432\u043E \u0437\u0430 ${((performance.now()-i)/1e3).toFixed(1)}\u0441. loss=${e[e.length-1]?.toFixed(3)}`),_("m-progress",100))}catch(l){I("m-status","\u041E\u0448\u0438\u0431\u043A\u0430: "+l.message)}finally{s.disabled=!1,r.disabled=!0,j=null}});L("m-stop").addEventListener("click",()=>{(j??new AbortController).abort(),I("m-status","\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430\u2026 (\u043F\u043E\u0441\u043B\u0435 \u0442\u0435\u043A\u0443\u0449\u0435\u0433\u043E \u0448\u0430\u0433\u0430)")});L("m-generate").addEventListener("click",()=>{if(!H||!fe)return;let s=B("m-prompt").value,r=parseFloat(B("m-temp").value)||.7,e=parseInt(B("m-topk").value,10)||40,o=L("m-stream").checked,n=L("m-output"),a=Math.floor(Math.random()*1e9);if(!o){let y=ue(H,new TextEncoder().encode(s),{temperature:r,topK:e,seed:a});n.textContent=y.text;return}n.textContent="";let i=ue(H,new TextEncoder().encode(s),{temperature:r,topK:e,seed:a}),l=128,t=0,h=()=>{let y=Math.min(t+l,i.ids.length),T=i.ids.slice(t,y);n.textContent+=new TextDecoder().decode(new Uint8Array(T)),t=y,t<i.ids.length&&setTimeout(h,20)};setTimeout(h,20)});te();ge();})();
 
-      async train(corpus, { vocabularySize, onProgress, yieldEvery = 50 }) {
-        const budget = vocabularySize - BASE_VOCAB - this.specialTokens.length;
-        if (budget < 0) throw new Error(`need at least ${BASE_VOCAB + this.specialTokens.length}`);
-        const res = await trainBPE(corpus, { vocabularySize: BASE_VOCAB + budget, onProgress, yieldEvery });
-        this.merges = res.merges;
-        this.vocabBytes = buildVocabulary(res.mergesMade, res.mergePairs);
-      }
-
-      encodeOrdinary(text) {
-        const pieces = pretokenize(normalizeText(text));
-        const out = [];
-        for (const p of pieces) {
-          const bytes = encodeBytes(p);
-          if (bytes.length < 2) { out.push(...bytes); continue; }
-          out.push(...this.mergePiece(bytes));
-        }
-        return out;
-      }
-
-      mergePiece(bytes) {
-        let ids = bytes.slice();
-        for (;;) {
-          let bestPos = -1, bestKey = -1, bestRank = Infinity;
-          for (let i = 0; i + 1 < ids.length; i++) {
-            const k = pairKey(ids[i], ids[i + 1]);
-            const id = this.merges.get(k);
-            if (id !== undefined) {
-              const rank = id - BASE_VOCAB;
-              if (rank < bestRank) { bestRank = rank; bestKey = k; bestPos = i; }
-            }
-          }
-          if (bestPos === -1) break;
-          const mergedId = this.merges.get(bestKey);
-          ids = [...ids.slice(0, bestPos), mergedId, ...ids.slice(bestPos + 2)];
-        }
-        return ids;
-      }
-
-      encode(text) {
-        const norm = normalizeText(text);
-        if (!this.specialRegex) return this.encodeOrdinary(norm);
-        const out = [];
-        let last = 0;
-        this.specialRegex.lastIndex = 0;
-        let m;
-        while ((m = this.specialRegex.exec(norm)) !== null) {
-          if (m.index > last) out.push(...this.encodeOrdinary(norm.slice(last, m.index)));
-          const id = this.specialId(m[0]);
-          out.push(id);
-          last = m.index + m[0].length;
-        }
-        if (last < norm.length) out.push(...this.encodeOrdinary(norm.slice(last)));
-        return out;
-      }
-
-      decode(ids) {
-        const base = this.specialBase;
-        const repl = new TextEncoder().encode(REPLACEMENT_CHAR);
-        const chunks = [], total = 0;
-        for (const id of ids) {
-          let bytes;
-          if (id >= base) {
-            const idx = id - base;
-            const tok = this.specialTokens[idx];
-            bytes = tok !== undefined ? new TextEncoder().encode(tok) : repl;
-          } else {
-            bytes = this.vocabBytes[id] ?? repl;
-          }
-          chunks.push(bytes);
-          total += bytes.length;
-        }
-        const out = new Uint8Array(total);
-        let off = 0;
-        for (const c of chunks) { out.set(c, off); off += c.length; }
-        return decodeBytes(out);
-      }
-
-      toVocab() {
-        const arr = [];
-        for (const [k, v] of this.merges) arr.push([k, v]);
-        arr.sort((x,y)=>x[1]-y[1]);
-        return { merges: arr, specialTokens: [...this.specialTokens] };
-      }
-
-      static fromVocab(v) {
-        const t = new BPETokenizer(v.specialTokens);
-        t.merges = new Map(v.merges);
-        const pairs = v.merges.map(([k])=>unpackPair(k));
-        pairs.sort((x,y)=> t.merges.get(pairKey(x[0],x[1])) - t.merges.get(pairKey(y[0],y[1])));
-        t.vocabBytes = buildVocabulary(pairs.length, pairs);
-        return t;
-      }
-    }
-
-    // ============================================================
-    // UI
-    // ============================================================
-
-    const tokenizer = new BPETokenizer(["<|endoftext|>"]);
-
-    const $ = (id) => document.getElementById(id);
-    const setStatus = (msg) => $("trainStatus").textContent = msg;
-    const setProgress = (pct) => $("progressBar").style.width = pct + "%";
-
-    function renderStats() {
-      $("trainStats").innerHTML = `
-        <span class="stat"><strong>Vocab:</strong> ${tokenizer.vocabularySize}</span>
-        <span class="stat"><strong>Merges:</strong> ${tokenizer.vocabularySize - 256 - tokenizer.specialTokenCount}</span>
-        <span class="stat"><strong>Special:</strong> ${tokenizer.specialTokenCount}</span>
-      `;
-    }
-
-    function enableUI(on) {
-      ["encodeBtn","decodeBtn","saveBtn","loadBtn"].forEach(id=>$("id").disabled=!on);
-      $("saveBtn").classList.toggle("hidden", !on);
-      $("loadBtn").classList.toggle("hidden", !on);
-    }
-
-    $("trainBtn").addEventListener("click", async () => {
-      const corpus = $("corpus").value;
-      const vocabSize = parseInt($("vocabSize").value, 10);
-      if (!corpus.trim()) { setStatus("Введите корпус"); return; }
-      setStatus("Обучение…"); $("trainBtn").disabled = true; setProgress(0);
-      const start = performance.now();
-      try {
-        await tokenizer.train(corpus, {
-          vocabularySize: vocabSize,
-          onProgress: (p) => {
-            setProgress(Math.min(100, (p.mergesMade / (vocabSize - 256)) * 100));
-            setStatus(`Merge ${p.mergeIndex + 1} / ~${vocabSize - 256}`);
-          },
-          yieldEvery: 50
-        });
-        const sec = ((performance.now() - start) / 1000).toFixed(2);
-        setStatus(`Готово за ${sec}с`);
-        setProgress(100);
-        renderStats();
-        enableUI(true);
-      } catch (e) { setStatus("Ошибка: " + e.message); }
-      $("trainBtn").disabled = false;
-    });
-
-    $("encodeBtn").addEventListener("click", () => {
-      const text = $("inputText").value;
-      const ids = tokenizer.encode(text);
-      $("output").textContent = JSON.stringify(ids);
-      renderStats();
-    });
-
-    $("decodeBtn").addEventListener("click", () => {
-      let txt = $("inputText").value.trim();
-      let ids;
-      try { ids = JSON.parse(txt); } catch { $("output").textContent = "Ошибка: введите валидный JSON массив чисел"; return; }
-      $("output").textContent = tokenizer.decode(ids);
-      renderStats();
-    });
-
-    $("saveBtn").addEventListener("click", () => {
-      const blob = new Blob([JSON.stringify(tokenizer.toVocab())], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob); a.download = "tokenizer-vocab.json"; a.click();
-    });
-
-    $("loadBtn").addEventListener("click", () => $("loadFile").click());
-    $("loadFile").addEventListener("change", async (e) => {
-      const f = e.target.files[0]; if (!f) return;
-      const txt = await f.text();
-      try {
-        const vocab = JSON.parse(txt);
-        Object.setPrototypeOf(tokenizer, BPETokenizer.prototype); // восстановить методы если нужно
-        Object.assign(tokenizer, BPETokenizer.fromVocab(vocab));
-        setStatus("Словарь загружен"); renderStats(); enableUI(true);
-      } catch (e) { setStatus("Ошибка: " + e.message); }
-    });
-
-    setStatus("Готов. Обучите токенизатор или загрузите словарь.");
-  </script>
+</script>
 </body>
 </html>
