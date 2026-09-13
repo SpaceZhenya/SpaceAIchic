@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpaceAI — BPE Tokenizer Demo</title>
+  <style>
+    :root { --bg:#0b0f14; --fg:#e8eef4; --muted:#6b7c8a; --acc:#00d4aa; --acc2:#0099ff; --card:#111820; --border:#23303d; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui, sans-serif; background:var(--bg); color:var(--fg); line-height:1.5; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:2rem 1rem; }
+    .container { width:100%; max-width:860px; }
+    header { text-align:center; margin-bottom:2rem; }
+    h1 { font-size:clamp(1.8rem,4vw,2.6rem); margin:0 0 0.5rem; background:linear-gradient(90deg,var(--acc),var(--acc2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .subtitle { color:var(--muted); font-size:1.05rem; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
+    label { display:block; font-size:0.9rem; color:var(--muted); margin-bottom:0.5rem; }
+    textarea, input[type=text] { width:100%; background:#0a0f14; border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:0.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.9rem; resize:vertical; }
+    textarea { min-height:100px; }
+    .row { display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem; }
+    button { background:linear-gradient(90deg,var(--acc),var(--acc2)); border:none; color:#051014; font-weight:600; padding:0.7rem 1.2rem; border-radius:8px; cursor:pointer; font-size:0.95rem; transition:opacity .2s; }
+    button:hover { opacity:0.9; }
+    button:disabled { opacity:0.5; cursor:not-allowed; }
+    .output { background:#0a0f14; border:1px solid var(--border); border-radius:8px; padding:1rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto; }
+    .stats { display:flex; gap:1.5rem; flex-wrap:wrap; margin-top:0.75rem; font-size:0.85rem; color:var(--muted); }
+    .stat { background:#0a0f14; border:1px solid var(--border); padding:0.4rem 0.8rem; border-radius:6px; }
+    .stat strong { color:var(--fg); }
+    footer { margin-top:2rem; text-align:center; color:var(--muted); font-size:0.8rem; }
+    a { color:var(--acc2); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>SpaceAI</h1>
+      <p class="subtitle">Byte-level BPE Tokenizer — чистый TypeScript, работает в браузере</p>
+    </header>
+
+    <section class="card">
+      <label>Обучение на корпусе</label>
+      <textarea id="corpus" placeholder="Вставьте текст для обучения токенизатора…"></textarea>
+      <div class="row">
+        <input type="number" id="vocabSize" value="2000" min="257" max="100000" style="width:140px;" placeholder="Vocab size">
+        <button id="trainBtn">Обучить</button>
+        <span id="trainStatus" style="align-self:center; color:var(--muted); font-size:0.85rem;"></span>
+      </div>
+      <div class="stats" id="trainStats"></div>
+    </section>
+
+    <section class="card">
+      <label>Кодирование / декодирование</label>
+      <textarea id="inputText" placeholder="Текст для encode / decode…"></textarea>
+      <div class="row" style="margin-top:1rem;">
+        <button id="encodeBtn" disabled>Encode</button>
+        <button id="decodeBtn" disabled>Decode</button>
+        <button id="saveBtn" class="hidden">Сохранить JSON</button>
+        <button id="loadBtn" class="hidden">Загрузить JSON</button>
+      </div>
+      <div class="output" id="output"></div>
+    </section>
+
+    <footer>
+      <a href="https://github.com/SpaceZhenya/SpaceAIchic" target="_blank">GitHub</a> ·
+      Реализация: <code>src/tokenizer/</code> · Запуск: <code>npm run demo</code>
+    </footer>
+  </div>
+
+  <script type="module">
+    // Загружаем собранный бандл токенизатора
+    let tokenizer = null;
+
+    async function loadTokenizer() {
+      try {
+        const mod = await import('./tokenizer-bundle.js');
+        tokenizer = mod.BPETokenizer.createWithSpecialTokens(['<|endoftext|>']);
+        setStatus('Токенизатор загружен. Обучите или загрузите словарь.');
+        enableButtons(true);
+      } catch (e) {
+        console.error(e);
+        setStatus('Ошибка загрузки бандла: ' + e.message);
+      }
+    }
+
+    function setStatus(msg) { document.getElementById('trainStatus').textContent = msg; }
+    function enableButtons(on) {
+      document.getElementById('encodeBtn').disabled = !on;
+      document.getElementById('decodeBtn').disabled = !on;
+      document.getElementById('saveBtn').classList.toggle('hidden', !on);
+      document.getElementById('loadBtn').classList.toggle('hidden', !on);
+    }
+
+    function renderStats() {
+      if (!tokenizer) return;
+      const el = document.getElementById('trainStats');
+      el.innerHTML = `
+        <span class="stat"><strong>Vocab:</strong> ${tokenizer.vocabularySize}</span>
+        <span class="stat"><strong>Merges:</strong> ${tokenizer.vocabularySize - 256 - tokenizer.specialTokenCount}</span>
+        <span class="stat"><strong>Special:</strong> ${tokenizer.specialTokenCount}</span>
+      `;
+    }
+
+    document.getElementById('trainBtn').addEventListener('click', async () => {
+      const corpus = document.getElementById('corpus').value;
+      const vocabSize = parseInt(document.getElementById('vocabSize').value, 10);
+      if (!corpus.trim()) { setStatus('Введите корпус'); return; }
+      setStatus('Обучение…');
+      document.getElementById('trainBtn').disabled = true;
+      const start = performance.now();
+      try {
+        await tokenizer.train(corpus, { vocabularySize: vocabSize, yieldEvery: 50 });
+        const sec = ((performance.now() - start) / 1000).toFixed(2);
+        setStatus(`Готово за ${sec}с`);
+        renderStats();
+      } catch (e) {
+        setStatus('Ошибка: ' + e.message);
+      }
+      document.getElementById('trainBtn').disabled = false;
+    });
+
+    document.getElementById('encodeBtn').addEventListener('click', () => {
+      const text = document.getElementById('inputText').value;
+      const ids = tokenizer.encode(text);
+      document.getElementById('output').textContent = JSON.stringify(ids);
+      renderStats();
+    });
+
+    document.getElementById('decodeBtn').addEventListener('click', () => {
+      let text = document.getElementById('inputText').value.trim();
+      let ids;
+      try {
+        ids = JSON.parse(text);
+      } catch {
+        document.getElementById('output').textContent = 'Ошибка: введите валидный JSON массив чисел';
+        return;
+      }
+      const decoded = tokenizer.decode(ids);
+      document.getElementById('output').textContent = decoded;
+      renderStats();
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const vocab = tokenizer.toVocab();
+      const blob = new Blob([JSON.stringify(vocab)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'tokenizer-vocab.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('loadBtn').addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.json';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        try {
+          const vocab = JSON.parse(text);
+          tokenizer = mod.BPETokenizer.fromVocab(vocab);
+          setStatus('Словарь загружен');
+          renderStats();
+          enableButtons(true);
+        } catch (e) {
+          setStatus('Ошибка загрузки: ' + e.message);
+        }
+      };
+      input.click();
+    });
+
+    loadTokenizer();
+  </script>
+</body>
+</html>
