@@ -14,9 +14,9 @@
     .subtitle { color:var(--muted); font-size:1.05rem; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
     label { display:block; font-size:0.9rem; color:var(--muted); margin-bottom:0.5rem; }
-    textarea, input[type=text] { width:100%; background:#0a0f14; border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:0.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.9rem; resize:vertical; }
+    textarea, input[type=text], input[type=number] { width:100%; background:#0a0f14; border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:0.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.9rem; resize:vertical; }
     textarea { min-height:100px; }
-    .row { display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem; }
+    .row { display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem; align-items:center; }
     button { background:linear-gradient(90deg,var(--acc),var(--acc2)); border:none; color:#051014; font-weight:600; padding:0.7rem 1.2rem; border-radius:8px; cursor:pointer; font-size:0.95rem; transition:opacity .2s; }
     button:hover { opacity:0.9; }
     button:disabled { opacity:0.5; cursor:not-allowed; }
@@ -28,13 +28,15 @@
     a { color:var(--acc2); text-decoration:none; }
     a:hover { text-decoration:underline; }
     .hidden { display:none; }
+    .progress { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:0.5rem; }
+    .progress-bar { height:100%; background:linear-gradient(90deg,var(--acc),var(--acc2)); width:0%; transition:width 0.1s; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>SpaceAI</h1>
-      <p class="subtitle">Byte-level BPE Tokenizer — чистый TypeScript, работает в браузере</p>
+      <p class="subtitle">Byte-level BPE Tokenizer — чистый TypeScript/JS, работает в браузере</p>
     </header>
 
     <section class="card">
@@ -43,132 +45,320 @@
       <div class="row">
         <input type="number" id="vocabSize" value="2000" min="257" max="100000" style="width:140px;" placeholder="Vocab size">
         <button id="trainBtn">Обучить</button>
-        <span id="trainStatus" style="align-self:center; color:var(--muted); font-size:0.85rem;"></span>
+        <span id="trainStatus" style="color:var(--muted); font-size:0.85rem;"></span>
       </div>
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
       <div class="stats" id="trainStats"></div>
     </section>
 
     <section class="card">
       <label>Кодирование / декодирование</label>
-      <textarea id="inputText" placeholder="Текст для encode / decode…"></textarea>
+      <textarea id="inputText" placeholder="Текст для encode / JSON-массив для decode…"></textarea>
       <div class="row" style="margin-top:1rem;">
         <button id="encodeBtn" disabled>Encode</button>
         <button id="decodeBtn" disabled>Decode</button>
         <button id="saveBtn" class="hidden">Сохранить JSON</button>
         <button id="loadBtn" class="hidden">Загрузить JSON</button>
+        <input type="file" id="loadFile" accept=".json" class="hidden">
       </div>
       <div class="output" id="output"></div>
     </section>
 
     <footer>
-      <a href="https://github.com/SpaceZhenya/SpaceAIchic" target="_blank">GitHub</a> ·
-      Реализация: <code>src/tokenizer/</code> · Запуск: <code>npm run demo</code>
+      <a href="https://github.com/SpaceZhenya/SpaceAIchic" target="_blank">GitHub</a>
     </footer>
   </div>
 
   <script type="module">
-    // Загружаем собранный бандл токенизатора
-    let tokenizer = null;
+    // ============================================================
+    // BYTE-LEVEL BPE TOKENIZER (embedded, no build step)
+    // ============================================================
 
-    async function loadTokenizer() {
-      try {
-        const mod = await import('./tokenizer-bundle.js');
-        tokenizer = mod.BPETokenizer.createWithSpecialTokens(['<|endoftext|>']);
-        setStatus('Токенизатор загружен. Обучите или загрузите словарь.');
-        enableButtons(true);
-      } catch (e) {
-        console.error(e);
-        setStatus('Ошибка загрузки бандла: ' + e.message);
+    const BASE_VOCAB = 256;
+    const PAIR_MULT = 1_000_000;
+    const REPLACEMENT_CHAR = "\uFFFD";
+
+    const PRETOKEN_PATTERN =
+      /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
+
+    function normalizeText(s) { return s.normalize("NFC"); }
+    function pretokenize(s) { return s.match(PRETOKEN_PATTERN) ?? []; }
+    function encodeBytes(s) { return Array.from(new TextEncoder().encode(s)); }
+    function decodeBytes(arr) { return new TextDecoder().decode(new Uint8Array(arr)); }
+    function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+    function pairKey(a, b) { return a * PAIR_MULT + b; }
+    function unpackPair(k) { return [Math.floor(k / PAIR_MULT), k % PAIR_MULT]; }
+    function inc(map, k) { map.set(k, (map.get(k) ?? 0) + 1); }
+    function dec(map, k) { const v = (map.get(k) ?? 0) - 1; if (v <= 0) map.delete(k); else map.set(k, v); }
+    function countPairs(ids) { const m = new Map(); for (let i = 0; i + 1 < ids.length; i++) inc(m, pairKey(ids[i], ids[i + 1])); return m; }
+    function mostFrequent(stats) { let best = -1, bestC = 0; for (const [k, c] of stats) if (c > bestC) { bestC = c; best = k; } return best === -1 ? null : [best, bestC]; }
+
+    function mergeWithPositions(ids, a, b, newId) {
+      const next = [], positions = [], starts = [];
+      let i = 0;
+      while (i < ids.length) {
+        if (i + 1 < ids.length && ids[i] === a && ids[i + 1] === b) {
+          starts.push(i);
+          next.push(newId);
+          positions.push(next.length - 1);
+          i += 2;
+        } else { next.push(ids[i]); i++; }
+      }
+      return { ids: next, mergePositions: positions, occurrenceStarts: starts };
+    }
+
+    function updateStats(stats, oldIds, newIds, occurrenceStarts, mergePositions, newId) {
+      const affected = new Set();
+      for (const i of occurrenceStarts) {
+        if (i - 1 >= 0) affected.add(i - 1);
+        if (i < oldIds.length - 1) affected.add(i);
+        if (i + 1 < oldIds.length - 1) affected.add(i + 1);
+      }
+      for (const p of affected) dec(stats, pairKey(oldIds[p], oldIds[p + 1]));
+      for (const j of mergePositions) {
+        if (j + 1 < newIds.length) inc(stats, pairKey(newIds[j], newIds[j + 1]));
+        if (j - 1 >= 0 && newIds[j - 1] !== newId) inc(stats, pairKey(newIds[j - 1], newIds[j]));
       }
     }
 
-    function setStatus(msg) { document.getElementById('trainStatus').textContent = msg; }
-    function enableButtons(on) {
-      document.getElementById('encodeBtn').disabled = !on;
-      document.getElementById('decodeBtn').disabled = !on;
-      document.getElementById('saveBtn').classList.toggle('hidden', !on);
-      document.getElementById('loadBtn').classList.toggle('hidden', !on);
+    async function trainBPE(corpus, { vocabularySize, onProgress, yieldEvery = 0 }) {
+      const maxMerges = vocabularySize - BASE_VOCAB;
+      if (maxMerges < 0) throw new Error(`vocabSize must be >= ${BASE_VOCAB}`);
+      const norm = normalizeText(corpus);
+      const pieces = pretokenize(norm);
+      const ids = [];
+      for (const p of pieces) for (const by of encodeBytes(p)) ids.push(by);
+      const stats = countPairs(ids);
+      const merges = new Map();
+      const mergePairs = [];
+      let current = ids;
+      let forward = 0;
+      for (let mi = 0; mi < maxMerges; mi++) {
+        const best = mostFrequent(stats);
+        if (!best || best[1] < 2) break;
+        const [bp, cnt] = best;
+        const [a, b] = unpackPair(bp);
+        const newId = BASE_VOCAB + mi;
+        const { ids: next, mergePositions, occurrenceStarts } = mergeWithPositions(current, a, b, newId);
+        updateStats(stats, current, next, occurrenceStarts, mergePositions, newId);
+        current = next;
+        merges.set(bp, newId);
+        mergePairs.push([a, b]);
+        if (onProgress) {
+          forward++;
+          if (forward >= 1) { forward = 0; onProgress({ mergeIndex: mi, mergesMade: mergePairs.length, currentLength: current.length }); }
+        }
+        if (yieldEvery > 0 && (mi % yieldEvery === 0 || mi === maxMerges - 1)) {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+      return { merges, mergePairs, mergesMade: mergePairs.length, corpusTokens: ids.length };
     }
 
+    function buildVocabulary(mergesMade, mergePairs) {
+      const vocab = new Array(BASE_VOCAB + mergesMade);
+      for (let i = 0; i < BASE_VOCAB; i++) vocab[i] = new Uint8Array([i]);
+      for (let i = 0; i < mergesMade; i++) {
+        const [a, b] = mergePairs[i];
+        const L = vocab[a], R = vocab[b];
+        const m = new Uint8Array(L.length + R.length);
+        m.set(L, 0); m.set(R, L.length);
+        vocab[BASE_VOCAB + i] = m;
+      }
+      return vocab;
+    }
+
+    class BPETokenizer {
+      constructor(specialTokens = []) {
+        this.merges = new Map();
+        this.specialTokens = specialTokens;
+        this.specialRegex = specialTokens.length === 0 ? null : new RegExp(
+          [...specialTokens].sort((x,y)=>y.length-x.length).map(escapeRegExp).join("|"), "g"
+        );
+        this.vocabBytes = buildVocabulary(0, []);
+      }
+
+      get vocabularySize() { return this.vocabBytes.length + this.specialTokens.length; }
+      get specialTokenCount() { return this.specialTokens.length; }
+      get specialBase() { return BASE_VOCAB + this.merges.size; }
+      specialId(tok) { return this.specialBase + this.specialTokens.indexOf(tok); }
+
+      async train(corpus, { vocabularySize, onProgress, yieldEvery = 50 }) {
+        const budget = vocabularySize - BASE_VOCAB - this.specialTokens.length;
+        if (budget < 0) throw new Error(`need at least ${BASE_VOCAB + this.specialTokens.length}`);
+        const res = await trainBPE(corpus, { vocabularySize: BASE_VOCAB + budget, onProgress, yieldEvery });
+        this.merges = res.merges;
+        this.vocabBytes = buildVocabulary(res.mergesMade, res.mergePairs);
+      }
+
+      encodeOrdinary(text) {
+        const pieces = pretokenize(normalizeText(text));
+        const out = [];
+        for (const p of pieces) {
+          const bytes = encodeBytes(p);
+          if (bytes.length < 2) { out.push(...bytes); continue; }
+          out.push(...this.mergePiece(bytes));
+        }
+        return out;
+      }
+
+      mergePiece(bytes) {
+        let ids = bytes.slice();
+        for (;;) {
+          let bestPos = -1, bestKey = -1, bestRank = Infinity;
+          for (let i = 0; i + 1 < ids.length; i++) {
+            const k = pairKey(ids[i], ids[i + 1]);
+            const id = this.merges.get(k);
+            if (id !== undefined) {
+              const rank = id - BASE_VOCAB;
+              if (rank < bestRank) { bestRank = rank; bestKey = k; bestPos = i; }
+            }
+          }
+          if (bestPos === -1) break;
+          const mergedId = this.merges.get(bestKey);
+          ids = [...ids.slice(0, bestPos), mergedId, ...ids.slice(bestPos + 2)];
+        }
+        return ids;
+      }
+
+      encode(text) {
+        const norm = normalizeText(text);
+        if (!this.specialRegex) return this.encodeOrdinary(norm);
+        const out = [];
+        let last = 0;
+        this.specialRegex.lastIndex = 0;
+        let m;
+        while ((m = this.specialRegex.exec(norm)) !== null) {
+          if (m.index > last) out.push(...this.encodeOrdinary(norm.slice(last, m.index)));
+          const id = this.specialId(m[0]);
+          out.push(id);
+          last = m.index + m[0].length;
+        }
+        if (last < norm.length) out.push(...this.encodeOrdinary(norm.slice(last)));
+        return out;
+      }
+
+      decode(ids) {
+        const base = this.specialBase;
+        const repl = new TextEncoder().encode(REPLACEMENT_CHAR);
+        const chunks = [], total = 0;
+        for (const id of ids) {
+          let bytes;
+          if (id >= base) {
+            const idx = id - base;
+            const tok = this.specialTokens[idx];
+            bytes = tok !== undefined ? new TextEncoder().encode(tok) : repl;
+          } else {
+            bytes = this.vocabBytes[id] ?? repl;
+          }
+          chunks.push(bytes);
+          total += bytes.length;
+        }
+        const out = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { out.set(c, off); off += c.length; }
+        return decodeBytes(out);
+      }
+
+      toVocab() {
+        const arr = [];
+        for (const [k, v] of this.merges) arr.push([k, v]);
+        arr.sort((x,y)=>x[1]-y[1]);
+        return { merges: arr, specialTokens: [...this.specialTokens] };
+      }
+
+      static fromVocab(v) {
+        const t = new BPETokenizer(v.specialTokens);
+        t.merges = new Map(v.merges);
+        const pairs = v.merges.map(([k])=>unpackPair(k));
+        pairs.sort((x,y)=> t.merges.get(pairKey(x[0],x[1])) - t.merges.get(pairKey(y[0],y[1])));
+        t.vocabBytes = buildVocabulary(pairs.length, pairs);
+        return t;
+      }
+    }
+
+    // ============================================================
+    // UI
+    // ============================================================
+
+    const tokenizer = new BPETokenizer(["<|endoftext|>"]);
+
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (msg) => $("trainStatus").textContent = msg;
+    const setProgress = (pct) => $("progressBar").style.width = pct + "%";
+
     function renderStats() {
-      if (!tokenizer) return;
-      const el = document.getElementById('trainStats');
-      el.innerHTML = `
+      $("trainStats").innerHTML = `
         <span class="stat"><strong>Vocab:</strong> ${tokenizer.vocabularySize}</span>
         <span class="stat"><strong>Merges:</strong> ${tokenizer.vocabularySize - 256 - tokenizer.specialTokenCount}</span>
         <span class="stat"><strong>Special:</strong> ${tokenizer.specialTokenCount}</span>
       `;
     }
 
-    document.getElementById('trainBtn').addEventListener('click', async () => {
-      const corpus = document.getElementById('corpus').value;
-      const vocabSize = parseInt(document.getElementById('vocabSize').value, 10);
-      if (!corpus.trim()) { setStatus('Введите корпус'); return; }
-      setStatus('Обучение…');
-      document.getElementById('trainBtn').disabled = true;
+    function enableUI(on) {
+      ["encodeBtn","decodeBtn","saveBtn","loadBtn"].forEach(id=>$("id").disabled=!on);
+      $("saveBtn").classList.toggle("hidden", !on);
+      $("loadBtn").classList.toggle("hidden", !on);
+    }
+
+    $("trainBtn").addEventListener("click", async () => {
+      const corpus = $("corpus").value;
+      const vocabSize = parseInt($("vocabSize").value, 10);
+      if (!corpus.trim()) { setStatus("Введите корпус"); return; }
+      setStatus("Обучение…"); $("trainBtn").disabled = true; setProgress(0);
       const start = performance.now();
       try {
-        await tokenizer.train(corpus, { vocabularySize: vocabSize, yieldEvery: 50 });
+        await tokenizer.train(corpus, {
+          vocabularySize: vocabSize,
+          onProgress: (p) => {
+            setProgress(Math.min(100, (p.mergesMade / (vocabSize - 256)) * 100));
+            setStatus(`Merge ${p.mergeIndex + 1} / ~${vocabSize - 256}`);
+          },
+          yieldEvery: 50
+        });
         const sec = ((performance.now() - start) / 1000).toFixed(2);
         setStatus(`Готово за ${sec}с`);
+        setProgress(100);
         renderStats();
-      } catch (e) {
-        setStatus('Ошибка: ' + e.message);
-      }
-      document.getElementById('trainBtn').disabled = false;
+        enableUI(true);
+      } catch (e) { setStatus("Ошибка: " + e.message); }
+      $("trainBtn").disabled = false;
     });
 
-    document.getElementById('encodeBtn').addEventListener('click', () => {
-      const text = document.getElementById('inputText').value;
+    $("encodeBtn").addEventListener("click", () => {
+      const text = $("inputText").value;
       const ids = tokenizer.encode(text);
-      document.getElementById('output').textContent = JSON.stringify(ids);
+      $("output").textContent = JSON.stringify(ids);
       renderStats();
     });
 
-    document.getElementById('decodeBtn').addEventListener('click', () => {
-      let text = document.getElementById('inputText').value.trim();
+    $("decodeBtn").addEventListener("click", () => {
+      let txt = $("inputText").value.trim();
       let ids;
-      try {
-        ids = JSON.parse(text);
-      } catch {
-        document.getElementById('output').textContent = 'Ошибка: введите валидный JSON массив чисел';
-        return;
-      }
-      const decoded = tokenizer.decode(ids);
-      document.getElementById('output').textContent = decoded;
+      try { ids = JSON.parse(txt); } catch { $("output").textContent = "Ошибка: введите валидный JSON массив чисел"; return; }
+      $("output").textContent = tokenizer.decode(ids);
       renderStats();
     });
 
-    document.getElementById('saveBtn').addEventListener('click', () => {
-      const vocab = tokenizer.toVocab();
-      const blob = new Blob([JSON.stringify(vocab)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'tokenizer-vocab.json'; a.click();
-      URL.revokeObjectURL(url);
+    $("saveBtn").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify(tokenizer.toVocab())], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "tokenizer-vocab.json"; a.click();
     });
 
-    document.getElementById('loadBtn').addEventListener('click', () => {
-      const input = document.createElement('input');
-      input.type = 'file'; input.accept = '.json';
-      input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const text = await file.text();
-        try {
-          const vocab = JSON.parse(text);
-          tokenizer = mod.BPETokenizer.fromVocab(vocab);
-          setStatus('Словарь загружен');
-          renderStats();
-          enableButtons(true);
-        } catch (e) {
-          setStatus('Ошибка загрузки: ' + e.message);
-        }
-      };
-      input.click();
+    $("loadBtn").addEventListener("click", () => $("loadFile").click());
+    $("loadFile").addEventListener("change", async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const txt = await f.text();
+      try {
+        const vocab = JSON.parse(txt);
+        Object.setPrototypeOf(tokenizer, BPETokenizer.prototype); // восстановить методы если нужно
+        Object.assign(tokenizer, BPETokenizer.fromVocab(vocab));
+        setStatus("Словарь загружен"); renderStats(); enableUI(true);
+      } catch (e) { setStatus("Ошибка: " + e.message); }
     });
 
-    loadTokenizer();
+    setStatus("Готов. Обучите токенизатор или загрузите словарь.");
   </script>
 </body>
 </html>
